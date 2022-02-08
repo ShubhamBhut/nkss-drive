@@ -10,7 +10,7 @@ create table if not exists tags(
 );
 
 create table if not exists file_tags(
-  tid         int,
-  fid         int,
+  tid         INTEGER,
+  fid         INTEGER,
   primary key (tid, fid)
 );
