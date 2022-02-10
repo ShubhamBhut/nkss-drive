@@ -14,25 +14,39 @@ def list_files(tags: list[str]) -> list[File]:
     """
     List files in database that have the tags.
     """
-    # TODO: query from db
+    if tags:
+        qs = ",".join(['?' for _ in tags])
 
-    return [
-        File(
-            name="file1",
-            link="https://example.com/file1",
-            tags=["tag1", "tag2"]
-        ),
-        File(
-            name="file2",
-            link="https://example.com/file2",
-            tags=["tag2", "tag3"]
-        ),
-        File(
-            name="file3",
-            link="https://example.com/file3",
-            tags=["tag3", "tag4"]
-        ),
-    ]
+        query = f"""
+            select f.name, f.link, group_concat(t.name) as tags
+            from (
+                select ft.fid
+                from file_tags ft
+                where ft.tid in (select tid from tags where name in ({qs}))
+                group by ft.fid
+                having count(ft.tid) = (?)
+            ) as f1
+            join files f on f.fid = f1.fid
+            join file_tags ft on f.fid = ft.fid
+            join tags t on ft.tid = t.tid
+            group by f1.fid;
+        """
+        # do not mutate the list
+        params: list[str | int] = tags.copy()
+        params.append(len(tags))
+        _cur.execute(query, params)
+    else:
+        query = f"""
+            select f.name, f.link, group_concat(t.name) as tags
+            from files f
+            join file_tags ft on f.fid = ft.fid
+            join tags t on ft.tid = t.tid
+            group by f.fid;
+        """
+        _cur.execute(query)
+
+    results = _cur.fetchall()
+    return [File(name, link, tags.split(",")) for name, link, tags in results]
 
 
 def add_files(files: list[File]):
@@ -41,13 +55,13 @@ def add_files(files: list[File]):
     """
     
     for file in files:
-        query1 = "INSERT INTO files(name, drive_url) VALUES (?,?) RETURNING fid"
+        query1 = "INSERT INTO files(name, link) VALUES (?,?) RETURNING fid"
         _cur.execute(query1, [file.name, file.link])
         fid = _cur.fetchone()[0]
 
         for tag in file.tags:
             tid = get_tagid_or_insert(tag)
-            query2 = "INSERT INTO file_tags(tid,fid) VALUES (?,?)" 
+            query2 = "INSERT INTO file_tags(tid,fid) VALUES (?,?)"
             _cur.execute(query2, [tid, fid])
 
 
